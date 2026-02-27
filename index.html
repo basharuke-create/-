@@ -2,17 +2,16 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Gemini Hyper Agent v3</title>
+<title>Gemini Hyper Agent v3 — Fixed</title>
 
 <style>
-    :root { --bg:#1e1e1e; --text:#d4d4d4; --accent:#007acc; --panel:#111; }
+    :root { --bg:#1e1e1e; --text:#d4d4d4; --accent:#007acc; }
     body { background:var(--bg); color:var(--text); font-family:sans-serif; padding:20px; }
     .container { max-width:900px; margin:0 auto; }
     textarea,input { width:100%; background:#2d2d2d; color:#fff; border:1px solid #444; padding:10px; margin-bottom:10px; border-radius:4px; }
     button { background:var(--accent); color:white; border:none; padding:10px 20px; cursor:pointer; border-radius:4px; font-weight:bold; }
     button:disabled { opacity:0.5; cursor:not-allowed; }
     #output { background:#000; padding:15px; border-radius:5px; height:520px; overflow-y:auto; white-space:pre-wrap; font-family:monospace; line-height:1.5; border-left:4px solid var(--accent); }
-    .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.8em; margin-bottom:5px; }
     .plan { color:#ce9178; }
     .exec { color:#9cdcfe; }
     .critic { color:#b5cea8; }
@@ -26,7 +25,7 @@
     <h2>🚀 Gemini Hyper Agent v3 <small style="font-size:0.5em;opacity:0.6;">Self-Improving AI</small></h2>
 
     <input type="password" id="apiKey" placeholder="Gemini API Key（本番はプロキシ推奨）">
-    <textarea id="prompt" rows="3" placeholder="タスクを入力（例：新規事業の収益モデルを5つ提案し、リスクを分析して）"></textarea>
+    <textarea id="prompt" rows="3" placeholder="タスクを入力"></textarea>
 
     <button id="runBtn">エージェント起動</button>
     <button id="stopBtn" style="background:#cc0000; display:none;">停止</button>
@@ -37,12 +36,15 @@
 <script type="module">
 
 /* ============================================================
-   HyperAgent v3 — 安定化・強化版
+   HyperAgent v3 — 404 修正版（v1 API）
    ============================================================ */
 class HyperAgent {
     constructor(apiKey) {
         this.apiKey = apiKey;
-        this.model = "gemini-1.5-flash";
+
+        // ★ 最新モデル名（1.5-flash-001）
+        this.model = "gemini-1.5-flash-001";
+
         this.controller = null;
         this.history = [];
         this.buffer = "";
@@ -54,18 +56,19 @@ class HyperAgent {
     async callLLM(prompt, onChunk) {
         this.controller = new AbortController();
 
-        const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                signal: this.controller.signal,
-                body: JSON.stringify({
-                    contents: this.history.concat([{ parts: [{ text: prompt }] }]),
-                    generationConfig: { temperature: 0.4, maxOutputTokens: 1500 }
-                })
-            }
-        );
+        // ★ v1beta → v1 に修正（404 の原因はこれ）
+        const url =
+`https://generativelanguage.googleapis.com/v1/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: this.controller.signal,
+            body: JSON.stringify({
+                contents: this.history.concat([{ parts: [{ text: prompt }] }]),
+                generationConfig: { temperature: 0.4, maxOutputTokens: 1500 }
+            })
+        });
 
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -81,7 +84,7 @@ class HyperAgent {
             this.buffer += chunk;
 
             const lines = this.buffer.split("\n");
-            this.buffer = lines.pop(); // 不完全行を保持
+            this.buffer = lines.pop();
 
             for (const line of lines) {
                 if (!line.startsWith("data:")) continue;
@@ -95,7 +98,6 @@ class HyperAgent {
                     full += text;
                     onChunk(text);
                 } catch (e) {
-                    // JSON が途中で切れている場合は次チャンクへ
                     this.buffer = jsonText + this.buffer;
                 }
             }
@@ -112,7 +114,7 @@ class HyperAgent {
         let feedback = "初回実行。改善点を抽出して次に反映してください。";
 
         for (let i = 1; i <= 4; i++) {
-            onUpdate(`\n\n=== ITERATION ${i} ===\n`, "status");
+            onUpdate(`\n\n=== ITERATION ${i} ===\n`);
 
             /* PLAN */
             onUpdate("[PLAN] ", "plan");
