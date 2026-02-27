@@ -24,7 +24,7 @@
 <div class="container">
     <h2>🚀 Gemini Hyper Agent v3 <small style="font-size:0.5em;opacity:0.6;">Self-Improving AI</small></h2>
 
-    <input type="password" id="apiKey" placeholder="Gemini API Key（本番はプロキシ推奨）">
+    <input type="password" id="apiKey" placeholder="Gemini API Key">
     <textarea id="prompt" rows="3" placeholder="タスクを入力"></textarea>
 
     <button id="runBtn">エージェント起動</button>
@@ -35,14 +35,11 @@
 
 <script type="module">
 
-/* ============================================================
-   HyperAgent v3 — 404 修正版（v1 API）
-   ============================================================ */
 class HyperAgent {
     constructor(apiKey) {
         this.apiKey = apiKey;
 
-        // ★ 最新モデル名（1.5-flash-001）
+        // ★ 最新モデル名（安定）
         this.model = "gemini-1.5-flash-001";
 
         this.controller = null;
@@ -50,13 +47,10 @@ class HyperAgent {
         this.buffer = "";
     }
 
-    /* -------------------------
-       SSE 安定ストリーミング
-       ------------------------- */
     async callLLM(prompt, onChunk) {
         this.controller = new AbortController();
 
-        // ★ v1beta → v1 に修正（404 の原因はこれ）
+        // ★ 404 修正済み：v1beta → v1
         const url =
 `https://generativelanguage.googleapis.com/v1/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
 
@@ -105,9 +99,6 @@ class HyperAgent {
         return full;
     }
 
-    /* -------------------------
-       エージェント本体
-       ------------------------- */
     async run(task, onUpdate) {
         let best = "";
         let bestScore = 0;
@@ -116,21 +107,18 @@ class HyperAgent {
         for (let i = 1; i <= 4; i++) {
             onUpdate(`\n\n=== ITERATION ${i} ===\n`);
 
-            /* PLAN */
             onUpdate("[PLAN] ", "plan");
             const plan = await this.callLLM(
                 `Task: ${task}\nFeedback: ${feedback}\n改善点を踏まえ、最適な計画を4ステップで再構成せよ。`,
                 (t) => onUpdate(t, "plan")
             );
 
-            /* EXECUTE */
             onUpdate("\n[EXECUTE] ", "exec");
             const result = await this.callLLM(
                 `Plan: ${plan}\nTask: ${task}\n計画を実行し、数値・根拠・リスク・実行手順を含めて具体化せよ。`,
                 (t) => onUpdate(t, "exec")
             );
 
-            /* CRITIC */
             onUpdate("\n[CRITIC] ", "critic");
             const critique = await this.callLLM(
                 `Result: ${result}\n論理性・具体性・実行可能性の3軸で100点満点で採点し、形式は以下に従う:\nSCORE: [数値]\nREASON: [理由]`,
@@ -163,9 +151,6 @@ class HyperAgent {
     }
 }
 
-/* ============================================================
-   UI Bridge
-   ============================================================ */
 const runBtn = document.getElementById("runBtn");
 const stopBtn = document.getElementById("stopBtn");
 const outputEl = document.getElementById("output");
