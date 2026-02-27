@@ -2,127 +2,91 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Gemini Hyper Agent v8 — Final Stable</title>
+    <title>Gemini Hyper Agent v11 - Final Stable</title>
     <style>
         :root { --bg: #0d1117; --text: #c9d1d9; --accent: #238636; }
-        body { background: var(--bg); color: var(--text); font-family: 'Consolas', monospace; padding: 20px; }
+        body { background: var(--bg); color: var(--text); font-family: 'Consolas', monospace; padding: 20px; line-height: 1.6; }
         .container { max-width: 900px; margin: 0 auto; }
         input, textarea { width: 100%; background: #010409; color: #fff; border: 1px solid #30363d; padding: 12px; margin-bottom: 10px; border-radius: 6px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; background: var(--accent); }
-        #output { background: #000; padding: 20px; border-radius: 6px; height: 600px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; border: 1px solid #30363d; margin-top: 20px; }
-        .plan { color: #d2a8ff; } .exec { color: #79c0ff; } .critic { color: #ffa657; } .score { color: #f2cc60; font-weight: bold; }
-        .error { color: #f85149; background: rgba(248,81,73,0.1); padding: 15px; border-radius: 6px; border: 1px solid #f85149; margin-top: 10px; }
+        #output { background: #000; padding: 20px; border-radius: 8px; height: 600px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #30363d; margin-top: 20px; }
+        .phase { color: #8b949e; border-left: 3px solid var(--accent); padding-left: 10px; margin: 15px 0; font-weight: bold; }
+        .result { color: #79c0ff; }
+        .score-tag { color: #f2cc60; background: rgba(242,204,96,0.1); padding: 2px 8px; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2 style="color:#58a6ff;">🚀 Gemini Hyper Agent v8</h2>
-    <input type="password" id="apiKey" placeholder="Gemini API Key">
-    <textarea id="prompt" rows="3" placeholder="分析タスクを入力してください"></textarea>
-    <button id="runBtn">戦略・財務・リスク・心理 4視点分析開始</button>
-    <div id="output"></div>
+    <h2 style="color:#58a6ff;">🚀 Gemini Hyper Agent v11</h2>
+    <input type="password" id="apiKey" placeholder="有効化したAPIキーを入力">
+    <textarea id="prompt" rows="3" placeholder="タスクを入力（例：新NISAの戦略的活用法）"></textarea>
+    <button id="runBtn">深層分析開始（4視点・数値化）</button>
+    <div id="output">>>> 接続準備完了。
+APIの有効化を確認しました。新しいAPIキーを貼り付けて開始してください。</div>
 </div>
 
 <script type="module">
-
-class StableAgent {
+class AgentV11 {
     constructor(apiKey) {
         this.apiKey = apiKey;
-        this.model = "gemini-1.5-flash"; 
+        this.baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
     }
 
-    async callAPI(prompt, history, onUpdate) {
-        // ★修正：最も安定する v1 バージョンの通常エンドポイントを使用
-        const url = `https://generativelanguage.googleapis.com/v1/models/${this.model}:generateContent?key=${this.apiKey}`;
-
-        const response = await fetch(url, {
+    async call(text, history = []) {
+        const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                contents: history.concat([{ role: "user", parts: [{ text: prompt }] }]),
-                generationConfig: { 
-                    temperature: 0.2,
-                    maxOutputTokens: 2048
-                }
+                contents: history.concat([{ role: "user", parts: [{ text: text }] }]),
+                generationConfig: { temperature: 0.3 }
             })
         });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(`[Status ${response.status}] ${errData.error?.message || "Unknown API Error"}`);
-        }
-
+        if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "応答なし";
-        onUpdate(text);
-        return text;
+        return data.candidates[0].content.parts[0].text;
     }
 }
 
-const runBtn = document.getElementById("runBtn");
-const outputEl = document.getElementById("output");
-
-function log(text, type) {
-    const div = document.createElement("div");
-    if (type) div.className = type;
-    div.textContent = text;
-    outputEl.appendChild(div);
-    outputEl.scrollTop = outputEl.scrollHeight;
+const out = document.getElementById("output");
+function write(txt, cls) {
+    const s = document.createElement("div");
+    if (cls) s.className = cls;
+    s.textContent = txt;
+    out.appendChild(s);
+    out.scrollTop = out.scrollHeight;
 }
 
-runBtn.addEventListener("click", async () => {
+document.getElementById("runBtn").onclick = async () => {
     const key = document.getElementById("apiKey").value.trim();
     const task = document.getElementById("prompt").value.trim();
-    if (!key || !task) return alert("入力が必要です");
+    if (!key || !task) return alert("入力不足です");
 
-    runBtn.disabled = true;
-    outputEl.textContent = ">>> システム初期化中... 安定版 v1 通信確立を試みます。\n";
-    
-    const agent = new StableAgent(key);
-    let history = [];
+    out.textContent = "";
+    write(">>> エンジン起動中... 通信確立成功。\n", "phase");
+    const agent = new AgentV11(key);
 
     try {
-        for (let i = 1; i <= 2; i++) {
-            log(`\n\n=== 試行回数: ${i} ===`, "score");
+        // STEP 1: PLAN
+        write("\n[1/3] 戦略・財務・リスク・心理の4視点で計画を策定中...", "phase");
+        const plan = await agent.call(`Task: ${task}\n命令: 4視点（戦略、財務、リスク、心理）で分析計画を立てろ。`);
+        write(plan, "result");
 
-            // STEP 1: PLAN
-            log("\n[計画フェーズ] 分析中...", "plan");
-            const plan = await agent.callAPI(
-                `Task: ${task}\n命令: 戦略・財務・リスク・心理の4視点で、構造化された実行計画を立てろ。`,
-                history, (t) => { log(t, "plan"); }
-            );
+        // STEP 2: EXECUTE
+        write("\n[2/3] 数値化および実行手順を具体化中...", "phase");
+        const res = await agent.call(`計画: ${plan}\n命令: 構造化・数値化し、成功確率と反証を明記して実行せよ。`);
+        write(res, "result");
 
-            // STEP 2: EXECUTE
-            log("\n\n[実行フェーズ] 詳細出力中...", "exec");
-            const result = await agent.callAPI(
-                `計画: ${plan}\n命令: 上記を具体化せよ。必ず数値、成功確率、反証、ステップ別実行手順を含めること。`,
-                history, (t) => { log(t, "exec"); }
-            );
+        // STEP 3: CRITIC
+        write("\n[3/3] 自己採点および最終修正...", "phase");
+        const score = await agent.call(`結果: ${res}\n命令: 100点満点で採点し SCORE: [数値] 形式で出せ。`);
+        write(score, "score-tag");
 
-            // STEP 3: CRITIC
-            log("\n\n[評価フェーズ] 検証中...", "critic");
-            const critic = await agent.callAPI(
-                `結果: ${result}\n命令: 100点満点で採点し改善点を出せ。形式: SCORE: [数値] / REASON: [理由]`,
-                history, (t) => { log(t, "critic"); }
-            );
-
-            const score = parseInt(critic.match(/SCORE:\s*(\d+)/)?.[1] || "0");
-            if (score >= 85) break;
-            
-            history.push({ role: "user", parts: [{ text: `改善要求: ${critic}` }] });
-            history.push({ role: "model", parts: [{ text: "了解。改善内容を反映します。" }] });
-        }
-        log("\n\n✅ 全工程完了。分析結果を確認してください。", "score");
+        write("\n\n🏆 すべてのプロセスが完了しました。", "phase");
     } catch (e) {
-        const errorDiv = document.createElement("div");
-        errorDiv.className = "error";
-        errorDiv.textContent = `【致命的エラー】\n${e.message}\n\n※APIキーが有効か、Google AI Studioの設定を確認してください。`;
-        outputEl.appendChild(errorDiv);
-    } finally {
-        runBtn.disabled = false;
+        write(`\n❌ エラー: ${e.message}`, "error");
     }
-});
+};
 </script>
 </body>
 </html>
