@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Strategic Agent v14 — Final</title>
+    <style>
+        body { background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }
+        .box { border: 1px solid #30363d; padding: 15px; border-radius: 8px; background: #161b22; }
+        input, textarea, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 4px; border: 1px solid #30363d; box-sizing: border-box; font-size: 16px; }
+        button { background: #238636; color: white; border: none; font-weight: bold; cursor: pointer; }
+        #log { background: #000; padding: 15px; height: 450px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #30363d; color: #79c0ff; }
+        .err { color: #f85149; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h3>🚀 v14: 深層分析エンジン</h3>
+        <input type="password" id="key" placeholder="APIキーをここに貼り付け">
+        <textarea id="task" rows="3" placeholder="タスクを入力（例：今後のNISA戦略）"></textarea>
+        <button id="go">分析実行 (無料枠)</button>
+        <div id="log">>>> スタンバイ</div>
+    </div>
+
+<script>
+const log = document.getElementById('log');
+const print = (t, c) => { const s = document.createElement('div'); if(c) s.className=c; s.textContent=t; log.appendChild(s); log.scrollTop=log.scrollHeight; };
+
+document.getElementById('go').onclick = async () => {
+    const k = document.getElementById('key').value.trim();
+    const t = document.getElementById('task').value.trim();
+    if(!k || !t) return alert("入力して！");
+
+    log.textContent = ">>> [通信開始] Google API v1 安定版へ接続...\n";
+
+    try {
+        // ★修正: 最も成功確率の高い v1 (安定版) エンドポイントを直接叩く
+        const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${k}`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: `【分析命令】以下のタスクを「戦略・財務・リスク・心理」の4視点で、数値と成功確率、反証を含めて構造化して答えよ。\nタスク：${t}` }] }]
+            })
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.json();
+            throw new Error(errorBody.error.message);
+        }
+
+        const data = await response.json();
+        const resText = data.candidates[0].content.parts[0].text;
+        
+        print("\n=== 【分析完了】 ===\n", "ok");
+        print(resText);
+
+    } catch (e) {
+        print(`\n❌ エラー発生: ${e.message}`, "err");
+        print("\n【対策】このメッセージが出る場合は、APIキー作成時に「Create API key in new project」を「もう一度」行い、その新しいキーを試してください。");
+    }
+};
+</script>
+</body>
+</html>
