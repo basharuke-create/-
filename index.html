@@ -2,70 +2,61 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Gemini Hyper Agent v7</title>
+    <title>Gemini Hyper Agent v8 — Final Stable</title>
     <style>
         :root { --bg: #0d1117; --text: #c9d1d9; --accent: #238636; }
-        body { background: var(--bg); color: var(--text); font-family: monospace; padding: 20px; }
+        body { background: var(--bg); color: var(--text); font-family: 'Consolas', monospace; padding: 20px; }
         .container { max-width: 900px; margin: 0 auto; }
         input, textarea { width: 100%; background: #010409; color: #fff; border: 1px solid #30363d; padding: 12px; margin-bottom: 10px; border-radius: 6px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; background: var(--accent); }
         #output { background: #000; padding: 20px; border-radius: 6px; height: 600px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; border: 1px solid #30363d; margin-top: 20px; }
         .plan { color: #d2a8ff; } .exec { color: #79c0ff; } .critic { color: #ffa657; } .score { color: #f2cc60; font-weight: bold; }
-        .error { color: #f85149; border: 1px solid #f85149; padding: 10px; }
+        .error { color: #f85149; background: rgba(248,81,73,0.1); padding: 15px; border-radius: 6px; border: 1px solid #f85149; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2 style="color:#58a6ff;">🚀 Gemini Hyper Agent v7</h2>
+    <h2 style="color:#58a6ff;">🚀 Gemini Hyper Agent v8</h2>
     <input type="password" id="apiKey" placeholder="Gemini API Key">
-    <textarea id="prompt" rows="3" placeholder="タスクを入力"></textarea>
-    <button id="runBtn">深層分析開始</button>
+    <textarea id="prompt" rows="3" placeholder="分析タスクを入力してください"></textarea>
+    <button id="runBtn">戦略・財務・リスク・心理 4視点分析開始</button>
     <div id="output"></div>
 </div>
 
 <script type="module">
 
-class FinalAgent {
+class StableAgent {
     constructor(apiKey) {
         this.apiKey = apiKey;
-        // ★修正: スクショのエラーに基づき、モデル名を固定版に変更
         this.model = "gemini-1.5-flash"; 
     }
 
-    async callAPI(prompt, history, onChunk) {
-        // ★修正: v1beta と gemini-1.5-flash の組み合わせを固定
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?key=${this.apiKey}`;
+    async callAPI(prompt, history, onUpdate) {
+        // ★修正：最も安定する v1 バージョンの通常エンドポイントを使用
+        const url = `https://generativelanguage.googleapis.com/v1/models/${this.model}:generateContent?key=${this.apiKey}`;
 
         const response = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 contents: history.concat([{ role: "user", parts: [{ text: prompt }] }]),
-                generationConfig: { temperature: 0.3 }
+                generationConfig: { 
+                    temperature: 0.2,
+                    maxOutputTokens: 2048
+                }
             })
         });
 
         if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`API Error: ${response.status}\n${err}`);
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(`[Status ${response.status}] ${errData.error?.message || "Unknown API Error"}`);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            
-            // ストリーミングからテキストを抽出する最も堅牢な正規表現
-            const matches = chunk.matchAll(/"text":\s*"((?:[^"\\]|\\.)*)"/g);
-            for (const match of matches) {
-                let text = match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-                onChunk(text);
-            }
-        }
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "応答なし";
+        onUpdate(text);
+        return text;
     }
 }
 
@@ -73,42 +64,63 @@ const runBtn = document.getElementById("runBtn");
 const outputEl = document.getElementById("output");
 
 function log(text, type) {
-    const span = document.createElement("span");
-    if (type) span.className = type;
-    span.textContent = text;
-    outputEl.appendChild(span);
+    const div = document.createElement("div");
+    if (type) div.className = type;
+    div.textContent = text;
+    outputEl.appendChild(div);
     outputEl.scrollTop = outputEl.scrollHeight;
 }
 
 runBtn.addEventListener("click", async () => {
     const key = document.getElementById("apiKey").value.trim();
     const task = document.getElementById("prompt").value.trim();
-    if (!key || !task) return alert("入力不足");
+    if (!key || !task) return alert("入力が必要です");
 
-    outputEl.textContent = ">>> Agent v7 Starting...\n";
-    const agent = new FinalAgent(key);
+    runBtn.disabled = true;
+    outputEl.textContent = ">>> システム初期化中... 安定版 v1 通信確立を試みます。\n";
+    
+    const agent = new StableAgent(key);
     let history = [];
 
     try {
         for (let i = 1; i <= 2; i++) {
-            log(`\n\n[試行 ${i}]`, "score");
+            log(`\n\n=== 試行回数: ${i} ===`, "score");
 
-            log("\n[計画] ", "plan");
-            const plan = await agent.callAPI(`Task: ${task}\n命令: 戦略・財務・リスク・心理の4視点で計画を立てろ。`, history, (t) => log(t, "plan"));
+            // STEP 1: PLAN
+            log("\n[計画フェーズ] 分析中...", "plan");
+            const plan = await agent.callAPI(
+                `Task: ${task}\n命令: 戦略・財務・リスク・心理の4視点で、構造化された実行計画を立てろ。`,
+                history, (t) => { log(t, "plan"); }
+            );
 
-            log("\n\n[実行] ", "exec");
-            const result = await agent.callAPI(`Plan: ${plan}\n命令: 構造化・数値化し、反証も含めて出力せよ。`, history, (t) => log(t, "exec"));
+            // STEP 2: EXECUTE
+            log("\n\n[実行フェーズ] 詳細出力中...", "exec");
+            const result = await agent.callAPI(
+                `計画: ${plan}\n命令: 上記を具体化せよ。必ず数値、成功確率、反証、ステップ別実行手順を含めること。`,
+                history, (t) => { log(t, "exec"); }
+            );
 
-            log("\n\n[評価] ", "critic");
-            const critic = await agent.callAPI(`Result: ${result}\n命令: 100点満点で採点せよ。SCORE: [数値]`, history, (t) => log(t, "critic"));
+            // STEP 3: CRITIC
+            log("\n\n[評価フェーズ] 検証中...", "critic");
+            const critic = await agent.callAPI(
+                `結果: ${result}\n命令: 100点満点で採点し改善点を出せ。形式: SCORE: [数値] / REASON: [理由]`,
+                history, (t) => { log(t, "critic"); }
+            );
 
             const score = parseInt(critic.match(/SCORE:\s*(\d+)/)?.[1] || "0");
             if (score >= 85) break;
-            history.push({ role: "user", parts: [{ text: `改善点: ${critic}` }] });
+            
+            history.push({ role: "user", parts: [{ text: `改善要求: ${critic}` }] });
+            history.push({ role: "model", parts: [{ text: "了解。改善内容を反映します。" }] });
         }
-        log("\n\n✅ 分析完了。", "score");
+        log("\n\n✅ 全工程完了。分析結果を確認してください。", "score");
     } catch (e) {
-        log(`\n\n[FATAL ERROR]\n${e.message}`, "error");
+        const errorDiv = document.createElement("div");
+        errorDiv.className = "error";
+        errorDiv.textContent = `【致命的エラー】\n${e.message}\n\n※APIキーが有効か、Google AI Studioの設定を確認してください。`;
+        outputEl.appendChild(errorDiv);
+    } finally {
+        runBtn.disabled = false;
     }
 });
 </script>
