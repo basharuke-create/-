@@ -1,191 +1,213 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<title>Gemini Hyper Agent v3 — Fixed</title>
-
-<style>
-    :root { --bg:#1e1e1e; --text:#d4d4d4; --accent:#007acc; }
-    body { background:var(--bg); color:var(--text); font-family:sans-serif; padding:20px; }
-    .container { max-width:900px; margin:0 auto; }
-    textarea,input { width:100%; background:#2d2d2d; color:#fff; border:1px solid #444; padding:10px; margin-bottom:10px; border-radius:4px; }
-    button { background:var(--accent); color:white; border:none; padding:10px 20px; cursor:pointer; border-radius:4px; font-weight:bold; }
-    button:disabled { opacity:0.5; cursor:not-allowed; }
-    #output { background:#000; padding:15px; border-radius:5px; height:520px; overflow-y:auto; white-space:pre-wrap; font-family:monospace; line-height:1.5; border-left:4px solid var(--accent); }
-    .plan { color:#ce9178; }
-    .exec { color:#9cdcfe; }
-    .critic { color:#b5cea8; }
-    .score { color:#ffcc00; }
-    .final { color:#00ff9c; font-weight:bold; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Hyper Agent v4</title>
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --text: #e0e0e0; --accent: #007acc; --border: #333; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; line-height: 1.6; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { border-bottom: 2px solid var(--accent); margin-bottom: 20px; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-end; }
+        h1 { margin: 0; font-size: 1.5rem; color: var(--accent); }
+        .config-panel { background: var(--panel); padding: 15px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
+        input, textarea { width: 100%; background: #2d2d2d; color: #fff; border: 1px solid var(--border); padding: 12px; margin-bottom: 10px; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+        .controls { display: flex; gap: 10px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; color: white; }
+        #runBtn { background: var(--accent); }
+        #runBtn:hover { background: #005f99; }
+        #stopBtn { background: #cc0000; display: none; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #output { background: #000; padding: 20px; border-radius: 8px; height: 600px; overflow-y: auto; white-space: pre-wrap; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; border: 1px solid var(--border); }
+        /* Syntax highlighting inside output */
+        .status { color: #888; font-style: italic; }
+        .plan { color: #ce9178; font-weight: bold; }
+        .exec { color: #9cdcfe; }
+        .critic { color: #b5cea8; }
+        .score { color: #ffd700; font-size: 1.1em; border-bottom: 1px solid #ffd700; }
+        .final { color: #4fc1ff; font-weight: bold; border: 1px solid #4fc1ff; padding: 10px; display: block; margin-top: 10px; }
+        .error { color: #f44336; font-weight: bold; background: rgba(244, 67, 54, 0.1); padding: 5px; }
+    </style>
 </head>
-
 <body>
+
 <div class="container">
-    <h2>🚀 Gemini Hyper Agent v3 <small style="font-size:0.5em;opacity:0.6;">Self-Improving AI</small></h2>
+    <header>
+        <h1>🚀 Gemini Hyper Agent v4</h1>
+        <span style="font-size: 12px; opacity: 0.6;">Maximum Reasoning Mode</span>
+    </header>
 
-    <input type="password" id="apiKey" placeholder="Gemini API Key">
-    <textarea id="prompt" rows="3" placeholder="タスクを入力"></textarea>
-
-    <button id="runBtn">エージェント起動</button>
-    <button id="stopBtn" style="background:#cc0000; display:none;">停止</button>
+    <div class="config-panel">
+        <input type="password" id="apiKey" placeholder="Gemini API Key (Google AI Studio)">
+        <textarea id="prompt" rows="3" placeholder="タスクを入力してください（例：2026年の国内SaaS市場の勝ち筋を分析せよ）"></textarea>
+        <div class="controls">
+            <button id="runBtn">分析開始 (Self-Refine)</button>
+            <button id="stopBtn">緊急停止</button>
+        </div>
+    </div>
 
     <div id="output"></div>
 </div>
 
 <script type="module">
 
-class HyperAgent {
+class AgentEngine {
     constructor(apiKey) {
         this.apiKey = apiKey;
-
-        // ★ 最新モデル名（安定）
-        this.model = "gemini-1.5-flash-001";
-
+        this.model = "gemini-1.5-flash"; // 速度重視。高度な分析には gemini-1.5-pro に変更可
         this.controller = null;
-        this.history = [];
-        this.buffer = "";
     }
 
-    async callLLM(prompt, onChunk) {
+    async streamCall(prompt, history, onChunk) {
         this.controller = new AbortController();
-
-        // ★ 404 修正済み：v1beta → v1
-        const url =
-`https://generativelanguage.googleapis.com/v1/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+        
+        // ★修正点: v1betaを使用し、SSEフラグを調整
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?key=${this.apiKey}`;
 
         const response = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             signal: this.controller.signal,
             body: JSON.stringify({
-                contents: this.history.concat([{ parts: [{ text: prompt }] }]),
-                generationConfig: { temperature: 0.4, maxOutputTokens: 1500 }
+                contents: history.concat([{ parts: [{ text: prompt }] }]),
+                generationConfig: { 
+                    temperature: 0.3, // 推論の安定性を優先
+                    maxOutputTokens: 2048 
+                }
             })
         });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(`[${response.status}] ${err.error?.message || 'API通信エラー'}`);
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let full = "";
+        let fullContent = "";
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            this.buffer += chunk;
-
-            const lines = this.buffer.split("\n");
-            this.buffer = lines.pop();
-
-            for (const line of lines) {
-                if (!line.startsWith("data:")) continue;
-
-                const jsonText = line.replace("data:", "").trim();
-                if (!jsonText) continue;
-
-                try {
-                    const json = JSON.parse(jsonText);
-                    const text = json.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                    full += text;
-                    onChunk(text);
-                } catch (e) {
-                    this.buffer = jsonText + this.buffer;
+            const chunk = decoder.decode(value, { stream: true });
+            
+            // Geminiのストリーミングは特殊なJSONの連結形式でくるため、正規表現でパーツを抽出
+            const textParts = chunk.match(/"text":\s*"(.*?)(?<!\\)"/g);
+            if (textParts) {
+                for (let part of textParts) {
+                    let cleanText = part.replace(/"text":\s*"/, "").slice(0, -1);
+                    // エスケープ文字の処理 (\n 等)
+                    cleanText = cleanText.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+                    fullContent += cleanText;
+                    onChunk(cleanText);
                 }
             }
         }
-        return full;
+        return fullContent;
+    }
+}
+
+class Orchestrator {
+    constructor(apiKey, outputEl) {
+        this.engine = new AgentEngine(apiKey);
+        this.outputEl = outputEl;
+        this.history = [];
     }
 
-    async run(task, onUpdate) {
-        let best = "";
+    print(text, type = "") {
+        const span = document.createElement("span");
+        if (type) span.className = type;
+        span.textContent = text;
+        this.outputEl.appendChild(span);
+        this.outputEl.scrollTop = this.outputEl.scrollHeight;
+    }
+
+    async start(task) {
+        let currentFeedback = "初回実行。最高精度の分析を行え。";
+        let bestResult = "";
         let bestScore = 0;
-        let feedback = "初回実行。改善点を抽出して次に反映してください。";
 
-        for (let i = 1; i <= 4; i++) {
-            onUpdate(`\n\n=== ITERATION ${i} ===\n`);
+        for (let i = 1; i <= 3; i++) {
+            this.print(`\n\n--- ITERATION ${i} (Reasoning Depth: ${i * 33}%) ---\n`, "status");
 
-            onUpdate("[PLAN] ", "plan");
-            const plan = await this.callLLM(
-                `Task: ${task}\nFeedback: ${feedback}\n改善点を踏まえ、最適な計画を4ステップで再構成せよ。`,
-                (t) => onUpdate(t, "plan")
-            );
+            // 1. PLAN (4視点強制)
+            this.print("\n[PLANNING]\n", "plan");
+            const planPrompt = `Task: ${task}\nFeedback: ${currentFeedback}\n上記を踏まえ、戦略・財務・リスク・心理の4視点を含む実行計画を4ステップで作成せよ。`;
+            const plan = await this.engine.streamCall(planPrompt, this.history, (t) => this.print(t, "plan"));
 
-            onUpdate("\n[EXECUTE] ", "exec");
-            const result = await this.callLLM(
-                `Plan: ${plan}\nTask: ${task}\n計画を実行し、数値・根拠・リスク・実行手順を含めて具体化せよ。`,
-                (t) => onUpdate(t, "exec")
-            );
+            // 2. EXECUTE (構造化・数値化強制)
+            this.print("\n\n[EXECUTING]\n", "exec");
+            const execPrompt = `Plan: ${plan}\nTask: ${task}\n計画を実行せよ。回答は必ず：・構造化・数値化・成功確率とリスク評価・反対意見 を含むこと。曖昧な表現は禁止。`;
+            const result = await this.engine.streamCall(execPrompt, this.history, (t) => this.print(t, "exec"));
 
-            onUpdate("\n[CRITIC] ", "critic");
-            const critique = await this.callLLM(
-                `Result: ${result}\n論理性・具体性・実行可能性の3軸で100点満点で採点し、形式は以下に従う:\nSCORE: [数値]\nREASON: [理由]`,
-                (t) => onUpdate(t, "critic")
-            );
+            // 3. CRITIC
+            this.print("\n\n[CRITIQUE]\n", "critic");
+            const criticPrompt = `Result: ${result}\n上記を厳格に評価せよ。0〜100点で採点し、以下の形式で出力せよ。\nSCORE: [数値]\nCOMMENT: [改善点]`;
+            const critique = await this.engine.streamCall(criticPrompt, this.history, (t) => this.print(t, "critic"));
 
-            const score = parseInt(critique.match(/SCORE:\s*(\d+)/)?.[1] || "0");
-            onUpdate(`\n[SCORE] ${score}\n`, "score");
+            // スコア抽出
+            const scoreMatch = critique.match(/SCORE:\s*(\d+)/);
+            const score = scoreMatch ? parseInt(scoreMatch[1]) : 0;
+            this.print(`\n[ITERATION SCORE: ${score}]\n`, "score");
 
             if (score > bestScore) {
                 bestScore = score;
-                best = result;
+                bestResult = result;
             }
 
             if (score >= 90) {
-                onUpdate("\n🎉 高スコア達成。最適解を確定します。\n", "final");
+                this.print("\n✅ 目標精度に到達。最適解を出力します。\n", "status");
                 break;
             }
 
-            feedback = critique;
-            this.history.push({ role: "user", parts: [{ text: result }] });
-            this.history.push({ role: "model", parts: [{ text: "改善点を理解。次の反復に反映します。" }] });
+            currentFeedback = critique;
+            // 履歴にコンテキストを蓄積
+            this.history.push({ role: "user", parts: [{ text: `試行${i}結果: ${result}` }] });
+            this.history.push({ role: "model", parts: [{ text: `改善案を理解。次の試行で修正します。` }] });
         }
 
-        onUpdate(`\n\n🏆 FINAL RESULT (Score: ${bestScore})\n${best}\n`, "final");
+        this.print(`\n\n🏆 FINAL STRATEGIC OUTPUT (Score: ${bestScore})\n\n${bestResult}\n`, "final");
     }
 
     stop() {
-        if (this.controller) this.controller.abort();
+        this.engine.controller?.abort();
+        this.print("\n\n[STOPPED] ユーザーにより停止されました。", "error");
     }
 }
 
+// UI Linking
 const runBtn = document.getElementById("runBtn");
 const stopBtn = document.getElementById("stopBtn");
 const outputEl = document.getElementById("output");
-let agent = null;
-
-function print(text, type) {
-    const span = document.createElement("span");
-    if (type) span.className = type;
-    span.textContent = text;
-    outputEl.appendChild(span);
-    outputEl.scrollTop = outputEl.scrollHeight;
-}
+let currentOrchestrator = null;
 
 runBtn.addEventListener("click", async () => {
-    const key = document.getElementById("apiKey").value;
-    const task = document.getElementById("prompt").value;
-    if (!key || !task) return alert("APIキーとタスクが必要です");
+    const key = document.getElementById("apiKey").value.trim();
+    const task = document.getElementById("prompt").value.trim();
 
-    outputEl.textContent = "";
+    if (!key || !task) return alert("APIキーとタスクを入力してください。");
+
     runBtn.disabled = true;
     stopBtn.style.display = "inline";
+    outputEl.textContent = "Agent Initializing...";
 
-    agent = new HyperAgent(key);
+    currentOrchestrator = new Orchestrator(key, outputEl);
 
     try {
-        await agent.run(task, print);
+        await currentOrchestrator.start(task);
     } catch (e) {
-        print(`\n[ERROR] ${e.message}`);
+        const errorSpan = document.createElement("span");
+        errorSpan.className = "error";
+        errorSpan.textContent = `\n\n${e.message}`;
+        outputEl.appendChild(errorSpan);
     } finally {
         runBtn.disabled = false;
         stopBtn.style.display = "none";
     }
 });
 
-stopBtn.addEventListener("click", () => agent?.stop());
+stopBtn.addEventListener("click", () => currentOrchestrator?.stop());
 
 </script>
 </body>
