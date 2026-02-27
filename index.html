@@ -2,89 +2,59 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Gemini Hyper Agent v11 - Final Stable</title>
+    <title>Gemini Agent v12 — Final Stable</title>
     <style>
-        :root { --bg: #0d1117; --text: #c9d1d9; --accent: #238636; }
-        body { background: var(--bg); color: var(--text); font-family: 'Consolas', monospace; padding: 20px; line-height: 1.6; }
-        .container { max-width: 900px; margin: 0 auto; }
-        input, textarea { width: 100%; background: #010409; color: #fff; border: 1px solid #30363d; padding: 12px; margin-bottom: 10px; border-radius: 6px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; background: var(--accent); }
-        #output { background: #000; padding: 20px; border-radius: 8px; height: 600px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #30363d; margin-top: 20px; }
-        .phase { color: #8b949e; border-left: 3px solid var(--accent); padding-left: 10px; margin: 15px 0; font-weight: bold; }
-        .result { color: #79c0ff; }
-        .score-tag { color: #f2cc60; background: rgba(242,204,96,0.1); padding: 2px 8px; border-radius: 4px; }
+        body { background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        textarea, input, button { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #30363d; box-sizing: border-box; }
+        button { background: #238636; color: white; font-weight: bold; cursor: pointer; border: none; }
+        #output { background: #000; padding: 20px; border-radius: 8px; height: 500px; overflow-y: auto; white-space: pre-wrap; border: 1px solid #30363d; }
+        .error { color: #f85149; border: 1px solid #f85149; padding: 10px; margin-top: 10px; }
     </style>
 </head>
 <body>
-
 <div class="container">
-    <h2 style="color:#58a6ff;">🚀 Gemini Hyper Agent v11</h2>
-    <input type="password" id="apiKey" placeholder="有効化したAPIキーを入力">
-    <textarea id="prompt" rows="3" placeholder="タスクを入力（例：新NISAの戦略的活用法）"></textarea>
-    <button id="runBtn">深層分析開始（4視点・数値化）</button>
-    <div id="output">>>> 接続準備完了。
-APIの有効化を確認しました。新しいAPIキーを貼り付けて開始してください。</div>
+    <h2>🚀 Gemini Agent v12</h2>
+    <input type="password" id="key" placeholder="APIキーを入力">
+    <textarea id="task" rows="3" placeholder="タスクを入力（例：NISAの戦略的活用）"></textarea>
+    <button id="btn">深層分析開始</button>
+    <div id="output">>>> システム待機中...</div>
 </div>
 
-<script type="module">
-class AgentV11 {
-    constructor(apiKey) {
-        this.apiKey = apiKey;
-        this.baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
-    }
+<script>
+async function ask(key, text) {
+    // URLを直接文字列として定義。モデル名を絶対に間違えない形式
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + key;
+    
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: text }] }] })
+    });
 
-    async call(text, history = []) {
-        const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                contents: history.concat([{ role: "user", parts: [{ text: text }] }]),
-                generationConfig: { temperature: 0.3 }
-            })
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const data = await response.json();
-        return data.candidates[0].content.parts[0].text;
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(`[${response.status}] ${err.error.message}`);
     }
+    const data = await response.json();
+    return data.candidates[0].content.parts[0].text;
 }
 
-const out = document.getElementById("output");
-function write(txt, cls) {
-    const s = document.createElement("div");
-    if (cls) s.className = cls;
-    s.textContent = txt;
-    out.appendChild(s);
-    out.scrollTop = out.scrollHeight;
-}
-
-document.getElementById("runBtn").onclick = async () => {
-    const key = document.getElementById("apiKey").value.trim();
-    const task = document.getElementById("prompt").value.trim();
-    if (!key || !task) return alert("入力不足です");
-
-    out.textContent = "";
-    write(">>> エンジン起動中... 通信確立成功。\n", "phase");
-    const agent = new AgentV11(key);
-
+document.getElementById("btn").onclick = async () => {
+    const key = document.getElementById("key").value.trim();
+    const task = document.getElementById("task").value.trim();
+    const out = document.getElementById("output");
+    
+    if(!key || !task) return alert("入力してね");
+    
+    out.textContent = ">>> 思考中...（約10秒お待ちください）";
+    
     try {
-        // STEP 1: PLAN
-        write("\n[1/3] 戦略・財務・リスク・心理の4視点で計画を策定中...", "phase");
-        const plan = await agent.call(`Task: ${task}\n命令: 4視点（戦略、財務、リスク、心理）で分析計画を立てろ。`);
-        write(plan, "result");
-
-        // STEP 2: EXECUTE
-        write("\n[2/3] 数値化および実行手順を具体化中...", "phase");
-        const res = await agent.call(`計画: ${plan}\n命令: 構造化・数値化し、成功確率と反証を明記して実行せよ。`);
-        write(res, "result");
-
-        // STEP 3: CRITIC
-        write("\n[3/3] 自己採点および最終修正...", "phase");
-        const score = await agent.call(`結果: ${res}\n命令: 100点満点で採点し SCORE: [数値] 形式で出せ。`);
-        write(score, "score-tag");
-
-        write("\n\n🏆 すべてのプロセスが完了しました。", "phase");
+        // あなたのこだわり「4視点・数値・リスク・心理」をワンショットで叩き込む
+        const res = await ask(key, `【厳命】以下のタスクを「戦略・財務・リスク・心理」の4視点で構造化し、必ず数値と成功確率、反対意見を含めて分析せよ。\nタスク：${task}`);
+        out.textContent = "【分析結果】\n\n" + res;
     } catch (e) {
-        write(`\n❌ エラー: ${e.message}`, "error");
+        out.innerHTML = `<div class="error">【エラー】\n${e.message}\n\n※APIは有効なのにこれが出る場合、一度ブラウザの「シークレットモード」で開いてみてください。</div>`;
     }
 };
 </script>
